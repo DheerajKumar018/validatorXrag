@@ -1,0 +1,3 @@
+pandas
+qdrant-client
+sentence-transformers

@@ -1,0 +1,65 @@
+# Use version 3.8 
+
+# Define all the services (containers) that make up the application
+services:
+
+  # --- DATABASE SERVICES ---
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: validator_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: Dhee # Reads from your .env file
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6333:6333" # Expose Qdrant UI/API to your Mac for easy access
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  # --- APPLICATION SERVICES ---
+  rag-service:
+    build: ./rag_service # Specifies the folder containing the RAG service's Dockerfile
+    ports:
+      - "8001:8000" # Expose RAG service on port 8001 on your Mac for direct testing
+    environment:
+      QDRANT_URL: "http://qdrant:6333"
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  validator-service:
+    build: ./validator_service # Specifies the folder for the Validator's Dockerfile
+    ports:
+      - "8000:8000" # Expose Validator on port 8000 on your Mac for direct testing
+    volumes:
+      - ./validator_service:/app  # Mounts the local validator_service folder into the container for easy code updates
+    environment:
+      DATABASE_URL: "postgresql://user:${POSTGRES_PASSWORD}@postgres:5432/validator_db"
+      RAG_SERVICE_URL: "http://rag-service:8000/analyze-payload"
+    depends_on:
+      - postgres
+      - rag-service
+    restart: unless-stopped
+
+  # --- GATEWAY ---
+  nginx:
+    image: nginx:latest
+    platform: linux/arm64/v8 
+    ports:
+      - "80:80" # This is the main entry point for all user traffic
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro # Mounts your custom config file
+    depends_on:
+      - validator-service # Ensures NGINX starts after the validator is ready
+    restart: unless-stopped
+
+# Define persistent storage volumes to save data even if containers are removed
+volumes:
+  postgres_data:
+  qdrant_data:
